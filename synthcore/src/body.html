@@ -1,0 +1,361 @@
+<div id="app">
+
+<header class="top">
+  <div class="brand"><span class="wordmark">SYNTHCORE</span><small>8-voice virtual analog · phosphor display</small></div>
+  <div class="presets" id="presetSlots" aria-label="Preset slots"></div>
+  <div class="group">
+    <select id="presetLib" class="sel lib" aria-label="Load a sound from the preset library"></select>
+    <input id="presetName" class="txt" type="text" maxlength="24" aria-label="Preset name" value="Init">
+    <button id="presetSave" class="btn" type="button">Save</button>
+    <button id="presetExport" class="btn" type="button">Export</button>
+    <button id="presetImportBtn" class="btn" type="button">Import</button>
+    <input id="presetImport" type="file" accept=".json,application/json" hidden>
+  </div>
+  <div class="group">
+    <label for="bpm">BPM</label>
+    <input id="bpm" class="txt" type="number" min="20" max="300" step="0.1" value="120">
+    <button id="tap" class="btn" type="button">Tap</button>
+  </div>
+  <div class="status">
+    <span id="audioState" class="pill warn">Audio off · click anywhere</span>
+    <span id="midiState" class="pill">MIDI —</span>
+    <button id="silentSw" class="tog" type="button" aria-pressed="false" hidden title="With the iPhone silent switch on, iOS mutes web audio. This plays the synth through the music path instead, which adds a little delay to key presses.">Silent switch</button>
+    <div class="cpu" title="Audio thread load"><span>CPU</span><div class="bar"><i id="cpuFill"></i></div><output id="cpuTxt">0%</output></div>
+<div class="seg viewsw" id="viewSw" role="radiogroup" aria-label="View"><button type="button" data-v="simple" role="radio">SIMPLE</button><button type="button" data-v="adv" role="radio">ADVANCED</button></div>
+    <button id="foldAll" class="btn" type="button">Fold all</button>
+    <button id="panic" class="btn danger" type="button">Panic</button>
+  </div>
+</header>
+
+<section class="panel p-quick simple-only" id="p-quick">
+  <h2>Quick controls <small>The knobs that matter most · Advanced view has everything</small></h2>
+  <div class="mods">
+    <div class="mod">
+      <header><h3><em>Q1</em>Tone</h3></header>
+      <div class="row">
+        <div data-t="knob" data-p="FLT_CUTOFF" data-size="lg" data-l="Brightness"></div>
+        <div data-t="knob" data-p="FLT_RES" data-size="lg" data-l="Resonance"></div>
+        <div data-t="knob" data-p="FLT_ENV_AMT" data-l="Filter env"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>Q2</em>Shape</h3></header>
+      <div class="row">
+        <div data-t="knob" data-p="ENV1_A" data-l="Attack"></div>
+        <div data-t="knob" data-p="ENV1_D" data-l="Decay"></div>
+        <div data-t="knob" data-p="ENV1_S" data-l="Sustain"></div>
+        <div data-t="knob" data-p="ENV1_R" data-l="Release"></div>
+        <div data-t="knob" data-p="GLIDE" data-l="Glide"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>Q3</em>Space</h3>
+        <div class="row"><div data-t="tog" data-p="CH_ON" data-l="Chorus"></div><div data-t="tog" data-p="DLY_ON" data-l="Echo"></div><div data-t="tog" data-p="REV_ON" data-l="Reverb"></div></div>
+      </header>
+      <div class="row">
+        <div data-t="knob" data-p="CH_MIX" data-l="Chorus"></div>
+        <div data-t="knob" data-p="DLY_SEND" data-l="Echo"></div>
+        <div data-t="knob" data-p="DLY_FB" data-l="Repeats"></div>
+        <div data-t="knob" data-p="REV_SEND" data-l="Reverb"></div>
+        <div data-t="knob" data-p="REV_DECAY" data-l="Tail"></div>
+        <div data-t="knob" data-p="MASTER_VOL" data-l="Volume"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-scr" id="p-scr">
+  <h2>Displays <small>Analog CRT simulation · every sample drawn · brightness follows beam speed</small></h2>
+  <div class="screens">
+  <figure class="crt">
+    <div class="tube"><canvas id="scope" width="320" height="200" aria-label="Waveform, 256 samples, rising-edge trigger"></canvas></div>
+    <figcaption><b>CH1</b> Y–T waveform <span id="tbTxt">0.53 ms/div · trig ↑ auto</span></figcaption>
+  </figure>
+  <figure class="crt">
+    <div class="tube"><canvas id="phase" width="320" height="200" aria-label="Phase portrait of the output"></canvas></div>
+    <figcaption><b>CH2</b> Phase portrait <span id="lagTxt">x[n] · x[n−τ]</span></figcaption>
+  </figure>
+  <figure class="crt">
+    <div class="tube"><canvas id="xy" width="320" height="200" aria-label="Stereo X-Y display, left against right"></canvas></div>
+    <figcaption><b>X–Y</b> Stereo L · R <span>X = left · Y = right</span></figcaption>
+  </figure>
+  </div>
+  <div class="scopectl" role="group" aria-label="Display controls">
+    <label class="rng"><span class="lbl">Intensity</span><input type="range" id="crtInt" min="0" max="1" step="0.01" value="0.5"><output id="crtIntTxt">1.0×</output></label>
+    <label class="rng"><span class="lbl">Persistence</span><input type="range" id="crtPers" min="0" max="1" step="0.01" value="0.4"><output id="crtPersTxt">126 ms</output></label>
+    <div class="selw"><span class="lbl">Trigger</span><div class="seg" id="crtTrig" role="radiogroup" aria-label="Trigger mode"><button type="button" data-v="auto" class="on" aria-checked="true" role="radio">AUTO</button><button type="button" data-v="normal" role="radio" aria-checked="false">NORMAL</button></div></div>
+    <span class="hint" id="crtCost"></span>
+  </div>
+  <figure class="crt crt-wide">
+    <div class="tube tube-wide spec-tube"><canvas id="spectro" width="900" height="160" aria-label="Spectrogram, frequency against time"></canvas>
+      <div class="faxis" id="fAxis" aria-hidden="true"></div>
+    </div>
+    <figcaption><b>FFT</b> Spectrogram <span id="specTxt">2048-pt Hann · 30 Hz–20 kHz log · −100…−8 dBFS · hover to read</span></figcaption>
+  </figure>
+</section>
+
+<section class="panel p-claude" id="p-claude">
+  <h2>Claude plays <small>Describe a piece · Claude composes it · the synth performs it live</small></h2>
+  <div class="cl">
+    <form class="cl-ask" id="clForm" autocomplete="off">
+      <input id="clPrompt" class="txt" type="text" maxlength="300" placeholder="e.g. a rainy late-night ballad on the Rhodes" aria-label="What should Claude play?">
+      <button class="btn cl-go" id="clGo" type="submit">Compose</button>
+    </form>
+    <div class="cl-chips" id="clChips" aria-label="Ideas"></div>
+    <div class="cl-row">
+      <button class="btn cl-play" id="clPlay" type="button">▶ Play</button>
+      <button class="tog" id="clLoop" type="button" aria-pressed="false">Loop</button>
+      <label class="cl-keep"><input type="checkbox" id="clKeep"> Keep my current sound</label>
+      <div class="selw cl-pieces"><select id="clPieces" class="sel" aria-label="Pieces"></select></div>
+    </div>
+    <div class="tube tube-wide cl-tube"><canvas id="clRoll" width="960" height="150" aria-label="Piano roll of the current piece"></canvas></div>
+    <div class="cl-cap"><b id="clTitle"></b><span id="clMeta"></span></div>
+    <div class="cl-knobs" id="clKnobs" aria-live="polite"></div>
+    <p class="cl-note" id="clNote"></p>
+    <p class="cl-status" id="clStatus" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="panel p-osc adv-only" id="p-osc">
+  <h2>Oscillators <small>PolyBLEP band-limited · Osc 2 can hard-sync or ring-mod against Osc 1</small></h2>
+  <div class="mods">
+    <div class="mod">
+      <header><h3><em>01</em>Osc 1</h3></header>
+      <div data-t="seg" data-p="OSC1_WAVE" data-icons="osc"></div>
+      <div class="row">
+        <div data-t="knob" data-p="OSC1_OCT"></div>
+        <div data-t="knob" data-p="OSC1_COARSE"></div>
+        <div data-t="knob" data-p="OSC1_FINE"></div>
+        <div data-t="knob" data-p="OSC1_PW"></div>
+        <div data-t="knob" data-p="OSC1_SPREAD"></div>
+        <div data-t="knob" data-p="OSC1_LEVEL"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>02</em>Osc 2</h3>
+        <div class="row"><div data-t="tog" data-p="OSC2_SYNC"></div><div data-t="tog" data-p="OSC2_RING"></div></div>
+      </header>
+      <div data-t="seg" data-p="OSC2_WAVE" data-icons="osc"></div>
+      <div class="row">
+        <div data-t="knob" data-p="OSC2_OCT"></div>
+        <div data-t="knob" data-p="OSC2_COARSE"></div>
+        <div data-t="knob" data-p="OSC2_FINE"></div>
+        <div data-t="knob" data-p="OSC2_PW"></div>
+        <div data-t="knob" data-p="OSC2_SPREAD"></div>
+        <div data-t="knob" data-p="OSC2_PHASE"></div>
+        <div data-t="knob" data-p="OSC2_LEVEL"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>03</em>Sub · Noise</h3></header>
+      <div class="row">
+        <div data-t="knob" data-p="SUB_LEVEL"></div>
+        <div data-t="knob" data-p="NOISE_LEVEL"></div>
+      </div>
+      <p class="hint">Sub is a sine one octave below Osc 1. Noise is white.</p>
+    </div>
+    <div class="mod">
+      <header><h3><em>04</em>Voice</h3></header>
+      <div class="row">
+        <div data-t="seg" data-p="VOICE_MODE"></div>
+        <div data-t="seg" data-p="ALLOC"></div>
+      </div>
+      <div class="row">
+        <div data-t="knob" data-p="UNISON"></div>
+        <div data-t="knob" data-p="UNI_DETUNE"></div>
+        <div data-t="knob" data-p="UNI_WIDTH"></div>
+        <div data-t="knob" data-p="GLIDE"></div>
+        <div data-t="knob" data-p="BEND_RANGE"></div>
+        <div data-t="knob" data-p="PITCH_ENV_AMT" data-l="Pitch env"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-filter adv-only" id="p-filter">
+  <h2>Filter <small>TPT state-variable · 4-pole ladder · or both in series</small></h2>
+  <div class="mods">
+    <div class="mod">
+      <header><h3><em>05</em>Filter</h3><div data-t="seg" data-p="FLT_TYPE"></div></header>
+      <div data-t="seg" data-p="FLT_MODE" id="fltModeSeg"></div>
+      <div class="row">
+        <div data-t="knob" data-p="FLT_CUTOFF" data-size="lg"></div>
+        <div data-t="knob" data-p="FLT_RES" data-size="lg"></div>
+        <div data-t="knob" data-p="FLT_KEYTRACK"></div>
+        <div data-t="knob" data-p="FLT_ENV_AMT"></div>
+        <div data-t="knob" data-p="FLT_FM" data-l="FM ← Osc2"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>06</em>Pre-filter drive</h3></header>
+      <div data-t="seg" data-p="FLT_SHAPER"></div>
+      <div class="row">
+        <div data-t="knob" data-p="FLT_DRIVE"></div>
+      </div>
+      <p class="hint">Env amount is scaled by Env 2 (filter), ±6 octaves at full depth.</p>
+    </div>
+    <div class="mod mod-bode">
+      <header><h3><em>07</em>Response</h3><span class="lbl" id="bodeInfo"></span></header>
+      <div class="tube tube-wide"><canvas id="bode" class="bode" width="400" height="100" aria-label="Filter magnitude response"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-env adv-only" id="p-env">
+  <h2>Envelopes <small>Env 1 → amp · Env 2 → filter · Env 3 → pitch · Env 4 free</small></h2>
+  <div class="strips" id="envStrips"></div>
+</section>
+
+<section class="panel p-lfo adv-only" id="p-lfo">
+  <h2>LFOs <small>Per-voice phase · rate shared · sync follows BPM</small></h2>
+  <div class="strips" id="lfoStrips"></div>
+</section>
+
+<section class="panel p-mod adv-only" id="p-mod">
+  <h2>Mod matrix <small>16 slots · evaluated per sample, per voice</small></h2>
+  <div class="mm-wrap">
+    <table class="mm" id="modMatrix">
+      <thead><tr><th>#</th><th>Source</th><th>Destination</th><th>Depth</th><th>Curve</th><th>On</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel p-fx adv-only" id="p-fx">
+  <h2>Effects <small>Shaper → chorus → delay ∥ reverb</small></h2>
+  <div class="mods">
+    <div class="mod">
+      <header><h3><em>A</em>Waveshaper</h3><div data-t="tog" data-p="WS_ON"></div></header>
+      <div data-t="seg" data-p="WS_MODE"></div>
+      <div class="row">
+        <div data-t="knob" data-p="WS_DRIVE"></div>
+        <div data-t="knob" data-p="WS_MIX"></div>
+        <div data-t="knob" data-p="WS_BITS"></div>
+        <div data-t="knob" data-p="WS_SRDIV"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>B</em>BBD chorus</h3><div data-t="tog" data-p="CH_ON"></div></header>
+      <div class="row">
+        <div data-t="knob" data-p="CH_LINES"></div>
+        <div data-t="knob" data-p="CH_RATE"></div>
+        <div data-t="knob" data-p="CH_DEPTH"></div>
+        <div data-t="knob" data-p="CH_DELAY"></div>
+        <div data-t="knob" data-p="CH_MIX"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>C</em>Delay</h3>
+        <div class="row"><div data-t="tog" data-p="DLY_PINGPONG"></div><div data-t="tog" data-p="DLY_SYNC"></div><div data-t="tog" data-p="DLY_ON"></div></div>
+      </header>
+      <div class="row">
+        <div data-t="knob" data-p="DLY_TIME"></div>
+        <div class="selw" data-dimwrap="DLY_DIV"><span class="lbl">Div</span><div data-t="sel" data-p="DLY_DIV"></div></div>
+        <div data-t="knob" data-p="DLY_FB"></div>
+        <div data-t="knob" data-p="DLY_SEND"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>D</em>FDN reverb</h3>
+        <div class="row"><div data-t="tog" data-p="REV_FREEZE"></div><div data-t="tog" data-p="REV_ON"></div></div>
+      </header>
+      <div class="row">
+        <div data-t="knob" data-p="REV_SIZE"></div>
+        <div data-t="knob" data-p="REV_DECAY"></div>
+        <div data-t="knob" data-p="REV_DAMP"></div>
+        <div data-t="knob" data-p="REV_PREDELAY"></div>
+        <div data-t="knob" data-p="REV_SEND"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-master adv-only" id="p-master">
+  <h2>Master <small>EQ → RMS compressor → true-peak limiter (−0.1 dBFS) → fader</small></h2>
+  <div class="mods">
+    <div class="mod">
+      <header><h3><em>E</em>3-band EQ</h3></header>
+      <div class="row">
+        <div data-t="knob" data-p="EQ_LOW"></div>
+        <div data-t="knob" data-p="EQ_MID"></div>
+        <div data-t="knob" data-p="EQ_HIGH"></div>
+      </div>
+    </div>
+    <div class="mod">
+      <header><h3><em>F</em>Compressor</h3><div data-t="tog" data-p="CMP_ON"></div></header>
+      <div class="row">
+        <div data-t="knob" data-p="CMP_THRESH"></div>
+        <div data-t="knob" data-p="CMP_RATIO"></div>
+        <div data-t="knob" data-p="CMP_ATTACK"></div>
+        <div data-t="knob" data-p="CMP_RELEASE"></div>
+        <div data-t="knob" data-p="CMP_MAKEUP"></div>
+        <div data-t="knob" data-p="CMP_MIX"></div>
+      </div>
+      <div class="gr"><span>GR</span><div class="bar"><i id="grFill"></i></div><output id="grTxt">0.0 dB</output></div>
+    </div>
+    <div class="mod">
+      <header><h3><em>G</em>Output</h3></header>
+      <div class="meters">
+        <div data-t="vs" data-p="MASTER_VOL" data-class="fader"></div>
+        <div class="vu-scale" id="vuScale"></div>
+        <div>
+          <div class="vu"><canvas id="vuL" width="20" height="120"></canvas><canvas id="vuR" width="20" height="120"></canvas></div>
+          <div class="vu-cap">L R · K-14</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-arp" id="p-arp">
+  <h2>Arpeggiator <small>Steps follow BPM · hold keys, or latch them · sustain pedal holds too</small></h2>
+  <div class="mods">
+    <div class="mod">
+      <header><h3><em>J</em>Pattern</h3>
+        <div class="row"><div data-t="tog" data-p="ARP_LATCH"></div><div data-t="tog" data-p="ARP_ON"></div></div>
+      </header>
+      <div data-t="seg" data-p="ARP_MODE"></div>
+      <div class="row">
+        <div class="selw"><span class="lbl">Rate</span><div data-t="sel" data-p="ARP_DIV"></div></div>
+        <div data-t="knob" data-p="ARP_OCT"></div>
+        <div data-t="knob" data-p="ARP_GATE"></div>
+        <div data-t="knob" data-p="ARP_SWING"></div>
+      </div>
+    </div>
+    <div class="mod mod-arpview">
+      <header><h3><em>K</em>Step trace</h3><span class="lbl" id="arpInfo">Arp off</span></header>
+      <div class="tube tube-wide"><canvas id="arpView" width="480" height="110" aria-label="Arpeggiator pattern"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-chd" id="p-chd">
+  <h2>Chords <small>Minor 7th family · press 1–4 or click a pad · runs through the arp when it is on</small></h2>
+  <div class="chd">
+    <div class="chd-ctl">
+      <div class="selw"><span class="lbl">Key</span><div data-t="sel" data-p="CHD_KEY"></div></div>
+      <div class="selw"><span class="lbl">Progression</span><div data-t="sel" data-p="CHD_PROG"></div></div>
+      <div class="selw"><span class="lbl">Chord</span><div data-t="seg" data-p="CHD_TYPE"></div></div>
+      <div class="selw"><span class="lbl">Length</span><div data-t="sel" data-p="CHD_RATE"></div></div>
+      <div data-t="knob" data-p="CHD_OCT"></div>
+      <div class="chd-togs"><div data-t="tog" data-p="CHD_VL"></div><div data-t="tog" data-p="CHD_BASS"></div></div>
+    </div>
+    <div class="chd-pads">
+      <button class="btn chd-play" id="chdPlay" type="button" aria-pressed="false">▶ Play</button>
+      <div class="pads" id="chdPads" role="group" aria-label="Chord pads"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel p-kb" id="p-kb">
+  <h2>Keyboard <small>QWERTY: A–; plays C–E · Z / X shift octave · drag on a key for pressure</small></h2>
+  <div class="kb-bar">
+    <div class="group"><button class="btn" id="kbDown" type="button" aria-label="Keyboard octave down">◀ Oct</button><span class="range" id="kbRange">C2–C5</span><button class="btn" id="kbUp" type="button" aria-label="Keyboard octave up">Oct ▶</button></div>
+    <div class="group"><label>QWERTY</label><span class="range" id="qwertyRange">C4</span></div>
+    <div class="velbar">VEL <div class="bar"><i id="velFill"></i></div><output id="velTxt">—</output></div>
+    <span class="pill" id="voiceCount">0 / 8 voices</span>
+  </div>
+  <div class="kb-wrap"><div class="kb" id="kb"></div></div>
+</section>
+
+</div>

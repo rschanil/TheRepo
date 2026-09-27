@@ -1,0 +1,62 @@
+const { chromium } = require('/home/claude/.npm-global/lib/node_modules/playwright');
+(async () => {
+  const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+  const errors = []; let fail = false;
+  page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  const ok = (c, m) => { console.log((c ? 'ok  ' : 'FAIL') + ' ' + m); if (!c) fail = true; };
+  const url = 'file://' + __dirname + '/../dist/synthcore.html#open';
+  await page.goto(url); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForTimeout(600);
+  const idle = await page.evaluate(() => { const g = document.querySelector('#xy').getContext('2d'); const d = g.getImageData(150, 90, 20, 20).data; let m = 0; for (let i = 3; i < d.length; i += 4) m = Math.max(m, d[i]); return m; });
+  ok(idle > 200, 'before audio starts, the X-Y spot sits lit at centre like a powered scope (alpha ' + idle + ')');
+  await page.click('.brand'); await page.waitForTimeout(1000);
+  await page.click('#presetSlots button:nth-child(1)');
+  await page.keyboard.down('KeyA'); await page.waitForTimeout(2500);
+  const shot = () => page.evaluate(() => { const g = document.querySelector('#scope').getContext('2d'); const d = g.getImageData(0, 0, 320, 200).data; const a = []; for (let i = 3; i < d.length; i += 4) a.push(d[i]); return a; });
+  const a1 = await shot(); await page.waitForTimeout(300); const a2 = await shot();
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  const m1 = mean(a1), m2 = mean(a2); let cov = 0, v1 = 0, v2 = 0;
+  for (let i = 0; i < a1.length; i++) { const x = a1[i] - m1, y = a2[i] - m2; cov += x * y; v1 += x * x; v2 += y * y; }
+  const corr = cov / Math.sqrt(v1 * v2);
+  ok(corr > 0.85, 'Y-T trace is stably triggered on a held saw (frame-to-frame correlation ' + corr.toFixed(2) + ')');
+  const xy = await page.evaluate(() => { const d = document.querySelector('#xy').getContext('2d').getImageData(0, 0, 320, 200).data; let on = 0, off = 0, no = 0, nf = 0;
+    for (let y = 10; y < 190; y++) for (let x = 60; x < 260; x++) { const a = d[(y * 320 + x) * 4 + 3]; const dist = Math.abs((x - 160) + (y - 100)) / Math.SQRT2; if (dist < 3) { on += a; no++; } else if (dist > 25) { off += a; nf++; } } return { on: on / no, off: off / nf }; });
+  ok(xy.on > 8 * (xy.off + 1), 'mono Init patch draws a 45° line on X-Y (on-line ' + xy.on.toFixed(0) + ' vs off-line ' + xy.off.toFixed(1) + ')');
+  const spec = await page.evaluate(() => { const sp = synthcore.visuals.spec; const d = document.querySelector('#spectro').getContext('2d').getImageData(sp.W - 8, 0, 4, sp.H).data;
+    let best = 0, by = 0; for (let y = 0; y < sp.H; y++) { const g = d[(y * 4) * 4 + 1]; if (g > best) { best = g; by = y; } } return { f: sp.freqAt(by + 0.5), best }; });
+  ok(Math.abs(spec.f / 261.63 - 1) < 0.05, 'spectrogram brightest row while holding C4: ' + spec.f.toFixed(0) + ' Hz (C4 = 262 Hz)');
+  const cost = await page.evaluate(() => synthcore.visuals.costMs);
+  ok(cost < 8, 'display rendering costs ' + cost.toFixed(2) + ' ms per frame (headless software rendering)');
+  await page.keyboard.up('KeyA');
+  // hover readout
+  const box = await (await page.$('#spectro')).boundingBox();
+  await page.mouse.move(box.x + box.width - 5, box.y + box.height * (1 - Math.log(440 / 30) / Math.log(20000 / 30)));
+  const hov = await page.textContent('#specTxt');
+  ok(/^4\d\d Hz · A4/.test(hov), 'hover readout: ' + hov);
+  // controls
+  await page.fill('#crtPers', '1'); await page.dispatchEvent('#crtPers', 'input');
+  ok((await page.textContent('#crtPersTxt')) === '2.00 s', 'persistence control reads ' + await page.textContent('#crtPersTxt'));
+  await page.click('#crtTrig button[data-v="normal"]');
+  ok((await page.textContent('#tbTxt')).includes('normal'), 'trigger mode normal: ' + await page.textContent('#tbTxt'));
+  await page.reload(); await page.waitForTimeout(300);
+  ok((await page.textContent('#crtPersTxt')) === '2.00 s' && (await page.textContent('#tbTxt')).includes('normal'), 'display settings remembered');
+  await page.click('#crtTrig button[data-v="auto"]'); await page.fill('#crtPers', '0.4'); await page.dispatchEvent('#crtPers', 'input');
+  // a real pad for the screenshot
+  await page.click('.brand'); await page.waitForTimeout(900);
+  await page.selectOption('#presetLib', { label: 'Cloud Nine' });
+  await page.keyboard.down('KeyA'); await page.keyboard.down('KeyE'); await page.keyboard.down('KeyG'); await page.keyboard.down('KeyU');
+  await page.waitForTimeout(3500);
+  await page.screenshot({ path: __dirname + '/shot-crt.png' });
+  const cost2 = await page.evaluate(() => synthcore.visuals.costMs);
+  ok(cost2 < 10, 'display cost on a dense supersaw chord ' + cost2.toFixed(2) + ' ms per frame');
+  await page.keyboard.up('KeyA'); await page.keyboard.up('KeyE'); await page.keyboard.up('KeyG'); await page.keyboard.up('KeyU');
+  await page.click('#p-scr .ph'); await page.waitForTimeout(400);
+  ok(await page.evaluate(() => !synthcore.visuals.visible), 'folded displays stop rendering');
+  await page.click('#p-scr .ph');
+  const m = await browser.newPage({ viewport: { width: 400, height: 800 } });
+  await m.goto(url); await m.waitForTimeout(300);
+  ok(await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) === 0, 'no sideways scroll at 400px');
+  ok(errors.length === 0, 'no errors ' + JSON.stringify(errors));
+  console.log(fail ? 'FAIL' : 'PASS');
+  await browser.close();
+})();

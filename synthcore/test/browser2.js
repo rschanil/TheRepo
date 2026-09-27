@@ -1,0 +1,35 @@
+const { chromium } = require('/home/claude/.npm-global/lib/node_modules/playwright');
+(async () => {
+  const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('file://' + __dirname + '/../dist/synthcore.html#open');
+  await page.waitForTimeout(300);
+  await page.mouse.click(700, 20);
+  await page.waitForTimeout(1200);
+  // Warm Pad chord first (X-Y blob from chorus), then Pluck arp
+  await page.click('#presetSlots button:nth-child(2)');
+  await page.keyboard.down('KeyA'); await page.keyboard.down('KeyD'); await page.keyboard.down('KeyG');
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: __dirname + '/shot-pad.png' });
+  await page.keyboard.up('KeyA'); await page.keyboard.up('KeyD'); await page.keyboard.up('KeyG');
+  await page.click('#presetSlots button:nth-child(5)');
+  await page.waitForTimeout(200);
+  await page.keyboard.down('KeyA'); await page.keyboard.down('KeyD'); await page.keyboard.down('KeyG');
+  await page.waitForTimeout(1500);
+  const st = await page.evaluate(() => ({ arpKeys: document.querySelectorAll('.key.arp').length, info: document.querySelector('#arpInfo').textContent, arpOn: synthcore.values[synthcore.PIDX.ARP_ON], lag: document.querySelector('#lagTxt').textContent, voices: document.querySelector('#voiceCount').textContent }));
+  await page.screenshot({ path: __dirname + '/shot-top.png' });
+  await page.screenshot({ path: __dirname + '/shot-full.png', fullPage: true });
+  await page.keyboard.up('KeyA'); await page.keyboard.up('KeyD'); await page.keyboard.up('KeyG');
+  await page.waitForTimeout(600);
+  const after = await page.evaluate(() => ({ arpKeys: document.querySelectorAll('.key.arp').length, info: document.querySelector('#arpInfo').textContent }));
+  const mobile = await browser.newPage({ viewport: { width: 400, height: 800 } });
+  await mobile.goto('file://' + __dirname + '/../dist/synthcore.html#open');
+  await mobile.waitForTimeout(300);
+  const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await mobile.screenshot({ path: __dirname + '/shot-mobile.png' });
+  console.log(JSON.stringify({ st, after, overflow, errors }, null, 1));
+  await browser.close();
+})();
